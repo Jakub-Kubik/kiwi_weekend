@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Author: Jakub Kubik
-# Date: 26.03.2019
+# Date: 27.03.2019
 
 import argparse
 from requests import get
@@ -23,13 +23,12 @@ def parse_arguments() -> argparse.Namespace:
                         help='Name of the airport.')
     parser.add_argument('--full', action='store_true', dest='full',
                         help='Print every detail from each airport.')
-
     return parser.parse_args()
 
 
 def get_airports_data_from_web_page() -> Union[None, BeautifulSoup]:
-    """ Get whole web page with all airports in GB.
-        If success return it or return None.
+    """ Get whole web page with all airports in UK.
+        If success return it else return None.
     """
     url = 'https://www.prokerala.com/travel/airports/united-kingdom/'
     try:
@@ -44,6 +43,7 @@ def get_lat_long_from_kiwi_api() -> Union[None, dict]:
     """ API is from task recommendation.
         Get latitudes and longitudes of supported airports by kiwi.com.
         This data are chosen according UK max, min latitude and longitude.
+        If success return dict with all lat and long else return None.
     """
     url = 'https://api.skypicker.com/locations/'
     try:
@@ -61,13 +61,17 @@ def get_lat_long_from_kiwi_api() -> Union[None, dict]:
 
 
 def create_structure(bs: BeautifulSoup, lat_and_long: dict) -> dict:
-    """ Create dictionary of airports in UK.
-        In dictionary city is key, value is list which contains tuples
+    """ Create dictionary of airports in UK and return it.
+        In dictionary city is key, value is list which contains dictionaries
         with data to each airport (airport name, IATA code, latitude and longitude).
         Latitude and longitude is set if that airport is in kiwi api
         else latitude and longitude is set to None.
     """
     airports = dict()
+    lat_lon_dict = dict()
+    for coord in lat_and_long['locations']:
+        lat_lon_dict[coord['code']] = {'lat': coord['location']['lat'],
+                                                   'lon': coord['location']['lon']}
 
     for table in bs.find_all('table'):
         for row in table.find_all('tr'):
@@ -78,10 +82,9 @@ def create_structure(bs: BeautifulSoup, lat_and_long: dict) -> dict:
                 iata = row.find(class_='tc td-width-60').text
 
                 latitude = longitude = None
-                for a in lat_and_long['locations']:
-                    if iata == a['code']:
-                        latitude = a['location']['lat']
-                        longitude = a['location']['lon']
+                if iata in lat_lon_dict.keys():
+                    latitude = lat_lon_dict[iata]['lat']
+                    longitude = lat_lon_dict[iata]['lon']
 
                 if city not in airports:
                     airports[city] = list()
@@ -91,18 +94,46 @@ def create_structure(bs: BeautifulSoup, lat_and_long: dict) -> dict:
 
 
 def format_output(params: argparse.Namespace, airports: dict):
-    # TODO: format output acording program arguments
-    print(params.cities, params.coords, params.iata, params.names, params.full)
-    i = 0
-    for k, v in airports.items():
+    """ Display all airports to stdout.
+        Display them according program parameters.
+    """
+    # None program parameters
+    if params.cities is False and \
+       params.coords is False and \
+       params.iata is False and \
+       params.names is False and \
+       params.full is False:
+        for k, v in airports.items():
+            for item in v:
+                print(item['airport name'], end=', ')
+                print(item['IATA'], end=', ')
+                print()
 
-        print('city: {}'.format(k), end=', ')
-        for item in v:
-            print(item)
-            if item['lat'] is not None:
-                i += 1
-    print(i)
-    return str
+    # --full program parameter
+    elif params.full:
+        for k, v in airports.items():
+            for item in v:
+                print(k, end=', ')
+                print(item['airport name'], end=', ')
+                print(item['IATA'], end=', ')
+                print(item['lat'], end=', ')
+                print(item['lon'], end=',')
+                print()
+
+    # other parameters and their combinations
+    else:
+        for k, v in airports.items():
+            for item in v:
+                if params.cities:
+                    print(k, end=', ')
+                if params.names:
+                    print(item['airport name'], end=', ')
+                if params.iata:
+                    print(item['IATA'], end=', ')
+                if params.coords:
+                    print(item['lat'], end=', ')
+                    print(item['lon'], end=', ')
+                print()
 
 
 if __name__ == '__main__':
@@ -118,4 +149,4 @@ if __name__ == '__main__':
 
     airports = create_structure(data, all_lat_and_lon_uk)
 
-    output = format_output(args, airports)
+    format_output(args, airports)
